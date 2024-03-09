@@ -618,40 +618,50 @@ public:
         imuPointerLastIteration = imuPointerLast;
     }
 
+    //计算每个点的平滑度和曲率
+    //曲率小-平面点 反之-边缘点
     void calculateSmoothness()
     {
         int cloudSize = segmentedCloud->points.size();
         for (int i = 5; i < cloudSize - 5; i++) {
-
+            //遍历点云，注意这里从第5个点开始到倒数第6个点结束。这是因为计算平滑度时需要使用点的前后各5个邻居
+            //计算第六个点的平滑度需要将当前点前五个点到激光雷达的距离+后五个点到激光雷达的距离-10倍当前点的激光雷达的距离
             float diffRange = segInfo.segmentedCloudRange[i-5] + segInfo.segmentedCloudRange[i-4]
                             + segInfo.segmentedCloudRange[i-3] + segInfo.segmentedCloudRange[i-2]
                             + segInfo.segmentedCloudRange[i-1] - segInfo.segmentedCloudRange[i] * 10
                             + segInfo.segmentedCloudRange[i+1] + segInfo.segmentedCloudRange[i+2]
                             + segInfo.segmentedCloudRange[i+3] + segInfo.segmentedCloudRange[i+4]
-                            + segInfo.segmentedCloudRange[i+5];            
-
+                            + segInfo.segmentedCloudRange[i+5];
+            //计算深度差的平方，作为点的曲率
             cloudCurvature[i] = diffRange*diffRange;
-
+            //将当前点的邻居选择状态初始化为0
             cloudNeighborPicked[i] = 0;
+            //将当前点的标签初始化为0
             cloudLabel[i] = 0;
-
+            //将当前点的平滑度值设置为其曲率
             cloudSmoothness[i].value = cloudCurvature[i];
+            //将当前点的索引赋给平滑度结构体
             cloudSmoothness[i].ind = i;
         }
     }
 
+    //标记一些点，这些点会影响区分边缘点和平面点，后续不参与特征提取
     void markOccludedPoints()
     {
+        //获取分割后点云的大小
         int cloudSize = segmentedCloud->points.size();
-
+        //遍历点云，注意这里从 第5个点开始到倒数第7个点结束。这是因为在计算过程中需要使用当前点的前后各5个邻居
         for (int i = 5; i < cloudSize - 6; ++i){
-
+            //获取当前点的深度
             float depth1 = segInfo.segmentedCloudRange[i];
+            //获取下一个点的深度
             float depth2 = segInfo.segmentedCloudRange[i+1];
+            //计算当前点和下一个点的列索引差值
             int columnDiff = std::abs(int(segInfo.segmentedCloudColInd[i+1] - segInfo.segmentedCloudColInd[i]));
-
+            //两个点的列索引差值在10以内
             if (columnDiff < 10){
-
+                //两个点的深度差大于0.3，可能当前点被遮挡
+                //标记当前点及其前五个邻居
                 if (depth1 - depth2 > 0.3){
                     cloudNeighborPicked[i - 5] = 1;
                     cloudNeighborPicked[i - 4] = 1;
@@ -659,7 +669,7 @@ public:
                     cloudNeighborPicked[i - 2] = 1;
                     cloudNeighborPicked[i - 1] = 1;
                     cloudNeighborPicked[i] = 1;
-                }else if (depth2 - depth1 > 0.3){
+                }else if (depth2 - depth1 > 0.3){  //可能下一个点被遮挡，标记下一个点及其后六个邻居
                     cloudNeighborPicked[i + 1] = 1;
                     cloudNeighborPicked[i + 2] = 1;
                     cloudNeighborPicked[i + 3] = 1;
@@ -668,11 +678,12 @@ public:
                     cloudNeighborPicked[i + 6] = 1;
                 }
             }
-
+            //计算当前点和前一个点的深度差
             float diff1 = std::abs(float(segInfo.segmentedCloudRange[i-1] - segInfo.segmentedCloudRange[i]));
+            //计算当前点和后一个点的深度差
             float diff2 = std::abs(float(segInfo.segmentedCloudRange[i+1] - segInfo.segmentedCloudRange[i]));
-
-            if (diff1 > 0.02 * segInfo.segmentedCloudRange[i] && diff2 > 0.02 * segInfo.segmentedCloudRange[i])
+            //如果当前点和前后两个点的深度差都大于0.02 * 当前点深度，说明当前点可能是遮挡的点，因此标记当前点
+            if (diff1 > 1 * segInfo.segmentedCloudRange[i] && diff2 > 1 * segInfo.segmentedCloudRange[i])
                 cloudNeighborPicked[i] = 1;
         }
     }
